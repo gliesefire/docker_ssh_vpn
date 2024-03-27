@@ -30,3 +30,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: gliesefire/docker_ssh_vpn:latest
+          build-args: |
+            SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY}
+            SSH_PORT_NUMBER=${SSH_PORT_NUMBER}

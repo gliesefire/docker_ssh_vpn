@@ -1,5 +1,7 @@
 # Multi-Platform Debian Docker Image for VPN Services
 
+[![ci](https://github.com/gliesefire/docker_ssh_vpn/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gliesefire/docker_ssh_vpn/actions/workflows/ci.yml)
+
 This repository contains the source code for a multi-platform Debian Docker image designed for deployment in AWS environments, specifically tailored for ECS or any similar AWS service. This Docker image facilitates the creation of a robust VPN server, featuring built-in SSH access, automatic IP address updating, an OpenVPN server, and a WireGuard server, ensuring secure and seamless connectivity.
 
 ## Features
