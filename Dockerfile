@@ -1,7 +1,7 @@
 FROM debian:latest
 
 # Setup ssh server
-RUN apt update && apt install -y openssh-server curl
+RUN apt update && apt install -y openssh-server curl unzip
 RUN apt install -y dumb-init
 RUN apt clean
 
@@ -15,11 +15,13 @@ RUN mkdir /run/sshd
 RUN chown root:root /run/sshd
 RUN chmod 755 /run/sshd
 
-COPY update-route53.sh /usr/local/bin/update-route53.sh
+COPY update-route53.sh /usr/local/bin/update-route53
 COPY aws_cli_install.sh /usr/local/bin/aws_cli_install
+COPY entrypoint.sh /usr/local/bin/entrypoint
+RUN chmod +x /usr/local/bin/entrypoint
 RUN chmod +x /usr/local/bin/aws_cli_install
-RUN chmod +x /usr/local/bin/update-route53.sh
+RUN chmod +x /usr/local/bin/update-route53
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
-CMD ["sh", "-c", "/usr/sbin/sshd -D && /usr/local/bin/aws_cli_install && /usr/local/bin/update-route53.sh"]
+CMD ["/usr/local/bin/entrypoint"]

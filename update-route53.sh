@@ -14,6 +14,11 @@ function try  {
 
 try rm -f $TMPFILE
 
+if [[ -z "${ECS_CONTAINER_METADATA_URI}" ]] ; then
+    echo "Missing ECS_CONTAINER_METADATA_URI, exiting..." 
+    exit 1
+fi
+
 try curl -s $ECS_CONTAINER_METADATA_URI -o $TMPFILE 
 
 ECS_CLUSTER=$(cat $TMPFILE | jq -r '.Cluster'|cut -d/ -f2)
