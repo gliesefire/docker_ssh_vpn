@@ -6,6 +6,8 @@ RUN apt install -y dumb-init
 RUN apt clean
 ARG SSH_PUBLIC_KEY
 ARG SSH_PORT_NUMBER
+ENV SSH_PUBLIC_KEY=$SSH_PUBLIC_KEY
+ENV SSH_PORT_NUMBER=$SSH_PORT_NUMBER
 
 RUN echo -n $SSH_PUBLIC_KEY | tee -a /root/.ssh/authorized_keys
 
@@ -24,5 +26,4 @@ RUN chmod +x /usr/local/bin/update-route53.sh
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
-ENV SSH_PORT_NUMBER=$SSH_PORT_NUMBER
 CMD ["sh", "-c", "/usr/sbin/sshd -D && /usr/local/bin/aws_cli_install && /usr/local/bin/update-route53.sh"]
