@@ -1,0 +1,4 @@
+volume/cache
+volume/lib
+volume/logs
+volume/tmp
