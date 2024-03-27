@@ -1,7 +1,7 @@
 FROM debian:latest
 
 # Setup ssh server
-RUN apt update && apt install -y openssh-server curl unzip
+RUN apt update && apt install -y openssh-server curl unzip jq
 RUN apt install -y dumb-init
 RUN apt clean
 
