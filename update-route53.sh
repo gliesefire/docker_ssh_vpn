@@ -14,6 +14,8 @@ function try  {
 
 try rm -f $TMPFILE
 
+sleep 180 # Wait for the ECS agent to register the task
+
 if [[ -z "${ECS_CONTAINER_METADATA_URI}" ]] ; then
     echo "Missing ECS_CONTAINER_METADATA_URI, exiting..." 
     exit 1
