@@ -1,5 +1,5 @@
 #!/bin/bash
-pushd /tmp
+pushd /tmp || echo "Failed to change directory to /tmp" && exit 1
 if [ -f /usr/bin/aws ]; then
   echo "AWS CLI already installed"
   exit 0
@@ -26,5 +26,5 @@ fi
 unzip awscli.zip
 ./aws/install
 rm -rf aws awscli.zip
-popd
+popd || echo "Failed to change directory to previous directory" && exit 1
 exit 0
