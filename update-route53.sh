@@ -5,8 +5,8 @@ TMPFILE_URI="file://$TMPFILE"
 AWS=/usr/local/bin/aws
 
 function try  {
-    eval $*
-    if [ $? -ne 0 ]; then
+    output=$(eval "$*")
+    if ! $output; then
         echo "Error while evaluating \"$*\", exiting..."
         exit 1
     fi
@@ -21,7 +21,7 @@ if [[ -z "${ECS_CONTAINER_METADATA_URI}" ]] ; then
     exit 1
 fi
 
-try curl -s $ECS_CONTAINER_METADATA_URI -o $TMPFILE 
+try curl -s "$ECS_CONTAINER_METADATA_URI" -o $TMPFILE 
 
 ECS_CLUSTER=$(cat $TMPFILE | jq -r '.Cluster'|cut -d/ -f2)
 ECS_TASK=$(cat $TMPFILE | jq -r '.TaskARN'|cut -d/ -f2)
@@ -31,7 +31,7 @@ if [[ -z "${ECS_CLUSTER}" ]]  || [[ -z "${ECS_TASK}" ]] ; then
     exit 1
 fi
 
-try $AWS ecs describe-tasks --tasks $ECS_TASK --cluster $ECS_CLUSTER  > $TMPFILE
+try $AWS ecs describe-tasks --tasks "$ECS_TASK" --cluster "$ECS_CLUSTER"  > $TMPFILE
 ENI_ID=$(cat $TMPFILE | jq -r '.tasks[].attachments[].details[] | select(.name =="networkInterfaceId") | .value ')
 
 
@@ -40,7 +40,7 @@ if [[ -z "${ENI_ID}" ]] ; then
     exit 1
 fi
 
-try $AWS ec2 describe-network-interfaces  --filters Name=network-interface-id,Values=$ENI_ID > $TMPFILE
+try $AWS ec2 describe-network-interfaces  --filters Name=network-interface-id,Values="$ENI_ID" > $TMPFILE
 
 R53_PUBLIC_IP=$(cat $TMPFILE | jq -r '.NetworkInterfaces[0].Association.PublicIp')
 
@@ -80,4 +80,4 @@ cat << EOF > $TMPFILE
 EOF
 
 echo "Trying to upsert $R53_HOST to $R53_PUBLIC_IP in zone $R53_ZONEID"
-try $AWS route53 change-resource-record-sets --hosted-zone-id $R53_ZONEID --change-batch $TMPFILE_URI
+try $AWS route53 change-resource-record-sets --hosted-zone-id "$R53_ZONEID" --change-batch $TMPFILE_URI

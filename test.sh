@@ -1,3 +1,4 @@
+#!/bin/bash
 docker rm tc
 docker image rm docker_ssh_vpn_test:latest
 docker build --tag docker_ssh_vpn_test:latest .
