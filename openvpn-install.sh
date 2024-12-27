@@ -10,19 +10,39 @@ if readlink /proc/$$/exe | grep -q "dash"; then
 	exit
 fi
 
-headless_mode=false
-openvpn_server_path="/etc/openvpn/server/"
+unset headless_mode
+
+echo "Welcome to the OpenVPN installer!"
+echo "Using envs"
+echo "IPV4: $ipv4_override"
+echo "IPV6: $ipv6_override"
+echo "PROTOCOL: $protocol_override"
+echo "PORT: $port_override"
+echo "DNS: $dns_server_override"
+echo "CLIENT_NAME: $initial_client_name_override"
+echo "KEY_COUNTRY: $KEY_COUNTRY"
+echo "KEY_PROVINCE: $KEY_PROVINCE"
+echo "KEY_CITY: $KEY_CITY"
+echo "KEY_ORG: $KEY_ORG"
+echo "KEY_EMAIL: $KEY_EMAIL"
+echo "KEY_OU: $KEY_OU"
+echo "KEY_NAME: $KEY_NAME"
+echo "KEY_CN: $KEY_CN"
 
 for arg in "$@"; do
-	if [ "$arg" = "--env-variable" ]; then
+	if [ "$arg" == "--headless" ]; then
 		headless_mode=true
 		break
 	fi
 done
 
-if [[ ! -t 0 ]] && [[ ! $headless_mode ]]; then
+if [[ ! -t 0 ]] && [[ -z $headless_mode ]]; then
 	echo "You can't run this script in non-interactive mode (unless you use --headless)."
 	exit 1
+fi
+
+if [[ $headless_mode ]]; then
+	echo "Running in headless mode, no questions will be asked."
 fi
 
 # Discard stdin. Needed when running from an one-liner which includes a newline
@@ -56,7 +76,8 @@ function detect_os() {
 		group_name="nobody"
 	else
 		echo "This installer seems to be running on an unsupported distribution.
-		Supported distros are Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS and Fedora."exit
+		Supported distros are Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS and Fedora."
+		exit
 	fi
 }
 
@@ -113,11 +134,18 @@ function new_client() {
 	[[ -z "$initial_client_name" ]] && initial_client_name_override="client"
 	[[ -z "$client" ]] && client=$initial_client_name
 
-	if [[ -z "$client" ]] && [[ ! $headless_mode ]]; then
+	if [[ -z "$client" && (-z $headless_mode || $headless_mode == "false") ]]; then
 		prompt=$1 || "Provide a name for the client:"
 		echo
 		echo "$prompt"
 		read -r -p "Name: " unsanitized_client
+
+		# check if length is at least 1
+		while [[ -z "$unsanitized_client" ]]; do
+			echo "Please enter a name."
+			read -r -p "Name: " unsanitized_client
+		done
+
 		client=$(sed 's/[^0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-]/_/g' <<<"$unsanitized_client")
 
 		while [[ -z "$client" || -e /etc/openvpn/server/easy-rsa/pki/issued/"$client".crt ]]; do
@@ -184,7 +212,7 @@ function choose_ipv4() {
 	# Get the list of all ipv4 in an array named ipv4s
 	readarray -t ipv4s < <(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}' | cut -d '/' -f 1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}')
 	# Check for ipv4 override in the environment, and check if that ip is in the list of ipv4s
-	if [[ -n "$ipv4_override" ]]; then
+	if [[ -n $ipv4_override ]]; then
 		echo "Using IPv4 address provided in the environment: $ipv4_override"
 		ip=$ipv4_override
 	fi
@@ -194,7 +222,7 @@ function choose_ipv4() {
 		if [[ ${#ipv4s[@]} -eq 1 ]]; then
 			echo "Using IPv4 address: ${ipv4s[0]}"
 			ip=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}' | cut -d '/' -f 1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}')
-		elif [[ ${#ipv4s[@]} -gt 1 ]] && [[ ! $headless_mode ]]; then
+		elif [[ ${#ipv4s[@]} -gt 1 ]] && [[ -z $headless_mode ]]; then
 			number_of_ip=${#ipv4s[@]}
 			echo
 			echo "Which IPv4 address should be used?"
@@ -206,6 +234,10 @@ function choose_ipv4() {
 			done
 			[[ -z "$ip_number" ]] && ip_number="1"
 			ip=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}' | cut -d '/' -f 1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' | sed -n "$ip_number"p)
+		else
+			echo "Multiple IPv4 addresses found. Defaulting to using the first IPv4 address found: ${ipv4s[0]}".
+			echo "Use the 'ipv4_override' environment variable to use a different IPv4 address."
+			ip=${ipv4s[0]}
 		fi
 	fi
 }
@@ -213,7 +245,7 @@ function choose_ipv4() {
 function check_if_ip_is_private() {
 	# If $ip is a private IP address, the server must be behind NAT
 	if echo "$ip" | grep -qE '^(10\.|172\.1[6789]\.|172\.2[0-9]\.|172\.3[01]\.|192\.168)'; then
-		if [[ $headless_mode ]]; then
+		if [[ -n $headless_mode ]]; then
 			echo "You are running in headless mode. Private IP detection is not possible. Please provide the public IP address via 'ip_override' environment variable."
 			exit
 		fi
@@ -224,7 +256,7 @@ function check_if_ip_is_private() {
 		get_public_ip=$(grep -m 1 -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' <<<"$(curl -m 10 -4Ls "http://ip1.dynupdate.no-ip.com/")")
 		read -r -p "Public IPv4 address / hostname [$get_public_ip]: " public_ip
 		# If the checkip service is unavailable and user didn't provide input, ask again
-		until [[ -n "$get_public_ip" || -n "$public_ip" ]]; do
+		until [[ -n $get_public_ip || -n $public_ip ]]; do
 			echo "Invalid input. $public_ip, $get_public_ip"
 			sleep 2
 			read -r -p "Public IPv4 address / hostname: " public_ip
@@ -238,7 +270,7 @@ function choose_ipv6() {
 	readarray -t ipv6s < <(ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}')
 
 	# Check for ipv6 override in the environment, and check if that ip is in the list of ipv6s
-	if [[ -n "$ipv6_override" && " ${ipv6s[*]} " =~ $ipv6_override ]]; then
+	if [[ -n $ipv6_override && " ${ipv6s[*]} " =~ $ipv6_override ]]; then
 		echo "Using IPv6 address provided in the environment: $ipv6_override"
 		ip6=$ipv6_override
 	fi
@@ -249,7 +281,7 @@ function choose_ipv6() {
 		ip6=$(ip -6 addr | grep 'inet6 [23]' | cut -d '/' -f 1 | grep -oE '([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}')
 	fi
 	# If system has multiple IPv6, ask the user to select one
-	if [[ ${#ipv6s[@]} -gt 1 ]] && [[ $headless_mode ]]; then
+	if [[ ${#ipv6s[@]} -gt 1 ]] && [[ -z $headless_mode ]]; then
 		number_of_ip6=${#ipv6s[@]}
 		echo
 		echo "Which IPv6 address should be used?"
@@ -266,7 +298,7 @@ function choose_ipv6() {
 
 function choose_protocol() {
 	protocol=$protocol_override
-	if [[ -z "$protocol" || "$protocol" =~ ^[12]$ ]] && [[ ! $headless_mode ]]; then
+	if [[ -z "$protocol" || "$protocol" =~ ^[12]$ ]] && [[ -z $headless_mode ]]; then
 		echo
 		echo "Which protocol should OpenVPN use?"
 		echo "   1) UDP (recommended)"
@@ -297,7 +329,7 @@ function choose_protocol() {
 
 function choose_port() {
 	port=$port_override
-	if [[ -z "$port" || "$port" =~ ^[0-9]+$ ]] && [[ ! $headless_mode ]]; then
+	if [[ -z "$port" || "$port" =~ ^[0-9]+$ ]] && [[ -z $headless_mode ]]; then
 		echo
 		echo "What port should OpenVPN listen to?"
 		read -r -p "Port [1194]: " port
@@ -317,7 +349,7 @@ function choose_port() {
 
 function choose_dns_server() {
 	dns="$dns_server_override"
-	if [[ -z "$dns" || "$dns" =~ ^[1-6]$ ]] && [[ ! $headless_mode ]]; then
+	if [[ -z "$dns" || "$dns" =~ ^[1-6]$ ]] && [[ -z $headless_mode ]]; then
 		echo
 		echo "Select a DNS server for the clients:"
 		echo "   1) Current system resolvers"
@@ -453,7 +485,7 @@ kMCBB/gj2XrMKEUuru1fnRHwao2efex4bPnbKUyc4DBPdrBhZudin96APjmV4u4e
 t6Oe2T8ZIF31JD/4yawP+un80qxzlPVF4956RLv4QyTHFV1BDmTU4D+oMedocqWN
 14Xitwokus6S4qgnMnJHb12+55JJ3Mr4OjFHfDvzOV3cQFXsFliRzTF2eCLAT+yG
 8ZBCCJ9+qXEs4HJD27clgQM17Oi6MXT/tC97wtV1qyYZid2EaF/XCf8CAQI=
------END DH PARAMETERS-----' > /etc/openvpn/server/dh.pem
+-----END DH PARAMETERS-----' >/etc/openvpn/server/dh.pem
 }
 
 function generate_server_conf() {
@@ -547,7 +579,7 @@ function add_ip_protocol_port_to_firewall() {
 	# Set NAT for the VPN subnet
 	firewall-cmd --direct --add-rule ipv4 nat POSTROUTING 0 -s 10.8.0.0/24 ! -d 10.8.0.0/24 -j SNAT --to "$ip"
 	firewall-cmd --permanent --direct --add-rule ipv4 nat POSTROUTING 0 -s 10.8.0.0/24 ! -d 10.8.0.0/24 -j SNAT --to "$ip"
-	if [[ -n "$ip6" ]]; then
+	if [[ -n $ip6 ]]; then
 		firewall-cmd --zone=trusted --add-source=fddd:1194:1194:1194::/64
 		firewall-cmd --permanent --zone=trusted --add-source=fddd:1194:1194:1194::/64
 		firewall-cmd --direct --add-rule ipv6 nat POSTROUTING 0 -s fddd:1194:1194:1194::/64 ! -d fddd:1194:1194:1194::/64 -j SNAT --to "$ip6"
@@ -584,7 +616,7 @@ case \"\$1\" in
 	$iptables_path -I FORWARD -s 10.8.0.0/24 -j ACCEPT
 	$iptables_path -I FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT" >/etc/init.d/openvpn-iptables
 
-	if [[ -n "$ip6" ]]; then
+	if [[ -n $ip6 ]]; then
 		echo "$ip6tables_path -t nat -A POSTROUTING -s fddd:1194:1194:1194::/64 ! -d fddd:1194:1194:1194::/64 -j SNAT --to $ip6
 $ip6tables_path -I FORWARD -s fddd:1194:1194:1194::/64 -j ACCEPT
 $ip6tables_path -I FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT" >>/etc/init.d/openvpn-iptables
@@ -598,7 +630,7 @@ $ip6tables_path -I FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT" >>/et
 	$iptables_path -D FORWARD -s 10.8.0.0/24 -j ACCEPT
 	$iptables_path -D FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT" >>/etc/init.d/openvpn-iptables
 
-	if [[ -n "$ip6" ]]; then
+	if [[ -n $ip6 ]]; then
 		echo "
 	$ip6tables_path -t nat -D POSTROUTING -s fddd:1194:1194:1194::/64 ! -d fddd:1194:1194:1194::/64 -j SNAT --to $ip6
 	$ip6tables_path -D FORWARD -s fddd:1194:1194:1194::/64 -j ACCEPT
@@ -641,7 +673,7 @@ function add_protocol_port_to_selinux() {
 }
 
 function revoke_existing_client() {
-	if [[ $headless_mode ]]; then
+	if [[ -z $headless_mode ]]; then
 		echo "You can't revoke an existing client in headless mode."
 		exit
 	fi
@@ -816,10 +848,10 @@ function generate_server_service() {
 		exit 1
 	esac
 
-	exit 0" > /etc/init.d/openvpn-server
+	exit 0" >/etc/init.d/openvpn-server
 	chmod +x /etc/init.d/openvpn-server
 	echo "#!/bin/bash
-/etc/init.d/openvpn-server start" > /tmp/openvpn-server-start.sh
+/etc/init.d/openvpn-server start" >/tmp/openvpn-server-start.sh
 	chmod +x /tmp/openvpn-server-start.sh
 	echo "ALL ALL=NOPASSWD: /tmp/openvpn-server-start.sh" | tee -a /etc/sudoers
 	echo "ALL ALL=NOPASSWD: /etc/init.d/openvpn-server" | tee -a /etc/sudoers
@@ -841,7 +873,12 @@ if [[ ! -e "/etc/openvpn/server/server.conf" ]]; then
 	choose_ipv4
 	echo "Ipv4 selection done"
 	check_if_ip_is_private
-	choose_ipv6
+
+	if [[ -z $ip ]]; then
+		choose_ipv6
+		check_if_ip_is_private
+	fi
+
 	choose_protocol
 	choose_port
 	choose_dns_server
@@ -863,7 +900,7 @@ if [[ ! -e "/etc/openvpn/server/server.conf" ]]; then
 	# If you are running in docker container, that too in a non-privileged mode, this will fail
 	# Ideally, network namespaces can be enabled in non-privileged mode, but that is not the case
 	sysctl -w net.ipv4.ip_forward=1
-	if [[ -n "$ip6" ]]; then
+	if [[ -n $ip6 ]]; then
 		# Enable net.ipv6.conf.all.forwarding for the system
 		echo "net.ipv6.conf.all.forwarding=1" >>/etc/sysctl.d/99-openvpn-forward.conf
 		# Enable without waiting for a reboot or service restart
@@ -880,7 +917,7 @@ if [[ ! -e "/etc/openvpn/server/server.conf" ]]; then
 	echo "Port added to SELinux (if present)"
 
 	# If the server is behind NAT, use the correct IP address
-	[[ -n "$public_ip" ]] && ip="$public_ip"
+	[[ -n $public_ip ]] && ip="$public_ip"
 
 	# client-common.txt is created so we have a template to add further users later
 	generate_client_template
@@ -889,7 +926,7 @@ if [[ ! -e "/etc/openvpn/server/server.conf" ]]; then
 	generate_server_service
 
 	# Enable and start the OpenVPN service
-	nohup "/tmp/openvpn-server-start.sh" > /dev/null 2>&1 &
+	nohup "/tmp/openvpn-server-start.sh" >/dev/null 2>&1 &
 	echo "OpenVPN service started"
 	# Generates the custom client.ovpn
 	new_client "" "$client"
@@ -898,7 +935,7 @@ if [[ ! -e "/etc/openvpn/server/server.conf" ]]; then
 	echo
 	echo "New clients can be added by running this script again."
 else
-	if [[ $headless_mode ]]; then
+	if [[ -n $headless_mode ]]; then
 		echo "Please run in an interactive mode to use further options"
 		exit
 	fi
